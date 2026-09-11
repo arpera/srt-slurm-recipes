@@ -162,14 +162,42 @@ backend:
       speculative_config.num_speculative_tokens: 3
 
 benchmark:
-  type: "sa-bench"
-  backend: "dynamo"
-  endpoint: "/v1/chat/completions"
-  isl: 8192
-  osl: 1024
-  use_chat_template: true # server renders the template; keeps ISL EXACTLY 8192
-  concurrencies: "128"
-  req_rate: "inf"
-  random_range_ratio: 1.0
-  num_prompts_mult: 8
-  num_warmup_mult: 1
+  type: custom
+  env:
+    AIPERF_CONCURRENCIES: "128"
+    AIPERF_MODEL: "Inferact/Qwen3.8-2.4T-A95B-NVFP4"
+  command: |
+    set -euo pipefail
+    command -v aiperf >/dev/null 2>&1 || pip install --quiet aiperf
+    URL="${SRT_FRONTEND_HOST}:${SRT_FRONTEND_PORT}"
+    ISL=8192
+    OSL=1024
+    NUM_PROMPTS_MULT=8
+    NUM_WARMUP_MULT=1
+    IFS='x' read -ra CC_LIST <<< "${AIPERF_CONCURRENCIES}"
+    for CC in "${CC_LIST[@]}"; do
+      NUM_PROMPTS=$((CC * NUM_PROMPTS_MULT))
+      WARMUP=$((CC * NUM_WARMUP_MULT))
+      ARTIFACT_DIR="/logs/aiperf_isl_${ISL}_osl_${OSL}/concurrency_${CC}"
+      mkdir -p "$ARTIFACT_DIR"
+      aiperf profile \
+        --model "${AIPERF_MODEL}" \
+        --tokenizer "${AIPERF_MODEL}" \
+        --url "$URL" \
+        --artifact-dir "$ARTIFACT_DIR" \
+        --profile-export-file profile_export_aiperf.json \
+        --endpoint-type chat \
+        --endpoint /v1/chat/completions \
+        --streaming \
+        --ui-type None \
+        --isl "$ISL" \
+        --osl "$OSL" \
+        --use-server-token-count \
+        --tokenizer-trust-remote-code \
+        --extra-inputs 'ignore_eos:true' \
+        --prompt-corpus random \
+        --random-range-ratio 1.0 \
+        --concurrency "$CC" \
+        --request-count "$NUM_PROMPTS" \
+        --warmup-request-count "$WARMUP"
+    done

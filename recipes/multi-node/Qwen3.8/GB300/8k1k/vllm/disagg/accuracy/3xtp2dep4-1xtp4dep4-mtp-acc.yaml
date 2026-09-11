@@ -1,4 +1,4 @@
-name: "qwen38-2.4t-nvfp4-gb300-disagg-2xtp2dep4-1xtp4dep4-mtp-cc512"
+name: "qwen38-2.4t-nvfp4-gb300-disagg-3xtp2dep4-1xtp4dep4-mtp-acc"
 
 identity:
   model:
@@ -11,7 +11,7 @@ identity:
     vllm: "0.26.1rc1.dev1177+ga9a17e709"
 
 slurm:
-  time_limit: "1:30:00"
+  time_limit: "1:00:00"
 
 model:
   path: "hf:Inferact/Qwen3.8-2.4T-A95B-NVFP4"
@@ -26,8 +26,8 @@ resources:
   gpu_type: "gb300"
   gpus_per_node: 4
 
-  prefill_nodes: 4
-  prefill_workers: 2
+  prefill_nodes: 6
+  prefill_workers: 3
   gpus_per_prefill: 8
 
   decode_nodes: 4
@@ -112,7 +112,6 @@ backend:
       # must be > ISL+OSL+chat_template_len
       max-model-len: 10240
 
-      # Sized for the cc=1024 end of the source sweep, kept as measured:
       max-num-seqs: 272                 # max_cc/DP4 + eps = 1024/4 + 16 = 272
       max-cudagraph-capture-size: 1088  # max-num-seqs * (1 + MTP) = 272 * (1 + 3) = 1088
       max-num-batched-tokens: 1104      # max-cudagraph-capture-size + eps = 1088 + 16 = 1104
@@ -129,43 +128,8 @@ backend:
       speculative_config.num_speculative_tokens: 3
 
 # USE /v1/chat/completions BECAUSE OF MTP!
+
 benchmark:
-  type: custom
-  env:
-    AIPERF_CONCURRENCIES: "512"
-    AIPERF_MODEL: "Inferact/Qwen3.8-2.4T-A95B-NVFP4"
-  command: |
-    set -euo pipefail
-    command -v aiperf >/dev/null 2>&1 || pip install --quiet aiperf
-    URL="${SRT_FRONTEND_HOST}:${SRT_FRONTEND_PORT}"
-    ISL=8192
-    OSL=1024
-    NUM_PROMPTS_MULT=8
-    NUM_WARMUP_MULT=1
-    IFS='x' read -ra CC_LIST <<< "${AIPERF_CONCURRENCIES}"
-    for CC in "${CC_LIST[@]}"; do
-      NUM_PROMPTS=$((CC * NUM_PROMPTS_MULT))
-      WARMUP=$((CC * NUM_WARMUP_MULT))
-      ARTIFACT_DIR="/logs/aiperf_isl_${ISL}_osl_${OSL}/concurrency_${CC}"
-      mkdir -p "$ARTIFACT_DIR"
-      aiperf profile \
-        --model "${AIPERF_MODEL}" \
-        --tokenizer "${AIPERF_MODEL}" \
-        --url "$URL" \
-        --artifact-dir "$ARTIFACT_DIR" \
-        --profile-export-file profile_export_aiperf.json \
-        --endpoint-type chat \
-        --endpoint /v1/chat/completions \
-        --streaming \
-        --ui-type None \
-        --isl "$ISL" \
-        --osl "$OSL" \
-        --use-server-token-count \
-        --tokenizer-trust-remote-code \
-        --extra-inputs 'ignore_eos:true' \
-        --prompt-corpus random \
-        --random-range-ratio 1.0 \
-        --concurrency "$CC" \
-        --request-count "$NUM_PROMPTS" \
-        --warmup-request-count "$WARMUP"
-    done
+  type: "gsm8k"
+  max_tokens: 16384
+  repeat: 5
