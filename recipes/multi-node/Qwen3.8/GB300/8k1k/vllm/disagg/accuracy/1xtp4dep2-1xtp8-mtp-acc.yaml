@@ -135,8 +135,6 @@ backend:
       # IMPORTANT!!!
       block-size: 2176
 
-# USE /v1/chat/completions BECAUSE OF MTP!
-
 benchmark:
   type: "gsm8k"
   max_tokens: 16384

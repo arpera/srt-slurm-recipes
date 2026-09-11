@@ -127,8 +127,6 @@ backend:
       speculative_config.method: "mtp"
       speculative_config.num_speculative_tokens: 3
 
-# USE /v1/chat/completions BECAUSE OF MTP!
-
 benchmark:
   type: "gsm8k"
   max_tokens: 16384
